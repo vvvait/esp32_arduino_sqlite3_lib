@@ -25,13 +25,23 @@
 #include <fcntl.h>
 #include "shox96_0_2.h"
 
+#define Dbg(fmt, ...) do { \
+  Serial.print(__func__); \
+  Serial.print(" "); \
+  Serial.printf_P(fmt, ## __VA_ARGS__); \
+  Serial.println(""); \
+} while (0)
+
+#undef Dbg
+#define Dbg(fmt, ...) void(0)
+
 #undef dbg_printf
 //#define dbg_printf(...) Serial.printf(__VA_ARGS__)
 #define dbg_printf(...) 0
 
 extern "C" {
     void SerialPrintln(const char *str) {
-        //Serial.println(str);
+        //Dbg(str);
     }
 }
 
@@ -101,21 +111,21 @@ static int ESP32DirectWrite(
   off_t ofst;                     /* Return value from lseek() */
   size_t nWrite;                  /* Return value from write() */
 
-  //Serial.println("fn: DirectWrite:");
+  Dbg("fn: DirectWrite:");
 
   ofst = fseek(p->fp, iOfst, SEEK_SET); //lseek(p->fd, iOfst, SEEK_SET);
   if( ofst != 0 ){
-    //Serial.println("Seek error");
+    Dbg("Seek error");
     return SQLITE_IOERR_WRITE;
   }
 
   nWrite = fwrite(zBuf, 1, iAmt, p->fp); // write(p->fd, zBuf, iAmt);
   if( nWrite!=iAmt ){
-    //Serial.println("Write error");
+    Dbg("Write error");
     return SQLITE_IOERR_WRITE;
   }
 
-  //Serial.println("fn:DirectWrite:Success");
+  Dbg("fn:DirectWrite:Success");
 
   return SQLITE_OK;
 }
@@ -127,12 +137,12 @@ static int ESP32DirectWrite(
 */
 static int ESP32FlushBuffer(ESP32File *p){
   int rc = SQLITE_OK;
-  //Serial.println("fn: FlushBuffer");
+  Dbg("fn: FlushBuffer");
   if( p->nBuffer ){
     rc = ESP32DirectWrite(p, p->aBuffer, p->nBuffer, p->iBufferOfst);
     p->nBuffer = 0;
   }
-  //Serial.println("fn:FlushBuffer:Success");
+  Dbg("fn:FlushBuffer:Success");
   return rc;
 }
 
@@ -141,12 +151,12 @@ static int ESP32FlushBuffer(ESP32File *p){
 */
 static int ESP32Close(sqlite3_file *pFile){
   int rc;
-  //Serial.println("fn: Close");
+  Dbg("fn: Close");
   ESP32File *p = (ESP32File*)pFile;
   rc = ESP32FlushBuffer(p);
   sqlite3_free(p->aBuffer);
   fclose(p->fp);
-  //Serial.println("fn:Close:Success");
+  Dbg("fn:Close:Success");
   return rc;
 }
 
@@ -159,7 +169,8 @@ static int ESP32Read(
   int iAmt, 
   sqlite_int64 iOfst
 ){
-      //Serial.println("fn: Read");
+  Dbg("fn: Read");
+  feedLoopWDT();
   ESP32File *p = (ESP32File*)pFile;
   off_t ofst;                     /* Return value from lseek() */
   int nRead;                      /* Return value from read() */
@@ -183,7 +194,7 @@ static int ESP32Read(
   nRead = fread(zBuf, 1, iAmt, p->fp); // read(p->fd, zBuf, iAmt);
 
   if( nRead==iAmt ){
-    //Serial.println("fn:Read:Success");
+    Dbg("fn:Read:Success");
     return SQLITE_OK;
   }else if( nRead>=0 ){
     return SQLITE_IOERR_SHORT_READ;
@@ -201,7 +212,8 @@ static int ESP32Write(
   int iAmt, 
   sqlite_int64 iOfst
 ){
-      //Serial.println("fn: Write");
+  Dbg("fn: Write");
+  feedLoopWDT();
   ESP32File *p = (ESP32File*)pFile;
   
   if( p->aBuffer ){
@@ -240,7 +252,7 @@ static int ESP32Write(
   }else{
     return ESP32DirectWrite(p, zBuf, iAmt, iOfst);
   }
-  //Serial.println("fn:Write:Success");
+  Dbg("fn:Write:Success");
 
   return SQLITE_OK;
 }
@@ -250,11 +262,11 @@ static int ESP32Write(
 ** the top of the file).
 */
 static int ESP32Truncate(sqlite3_file *pFile, sqlite_int64 size){
-      //Serial.println("fn: Truncate");
+      Dbg("fn: Truncate");
 #if 0
   if( ftruncate(((ESP32File *)pFile)->fd, size) ) return SQLITE_IOERR_TRUNCATE;
 #endif
-  //Serial.println("fn:Truncate:Success");
+  Dbg("fn:Truncate:Success");
   return SQLITE_OK;
 }
 
@@ -262,7 +274,7 @@ static int ESP32Truncate(sqlite3_file *pFile, sqlite_int64 size){
 ** Sync the contents of the file to the persistent media.
 */
 static int ESP32Sync(sqlite3_file *pFile, int flags){
-      //Serial.println("fn: Sync");
+      Dbg("fn: Sync");
   ESP32File *p = (ESP32File*)pFile;
   int rc;
 
@@ -275,7 +287,7 @@ static int ESP32Sync(sqlite3_file *pFile, int flags){
     return SQLITE_IOERR_FSYNC;
   rc = fsync(fileno(p->fp));
   //if (rc == 0)
-    //Serial.println("fn:Sync:Success");
+    Dbg("fn:Sync:Success");
   return SQLITE_OK; // ignore fsync return value // (rc==0 ? SQLITE_OK : SQLITE_IOERR_FSYNC);
 }
 
@@ -283,7 +295,7 @@ static int ESP32Sync(sqlite3_file *pFile, int flags){
 ** Write the size of the file in bytes to *pSize.
 */
 static int ESP32FileSize(sqlite3_file *pFile, sqlite_int64 *pSize){
-      //Serial.println("fn: FileSize");
+      Dbg("fn: FileSize");
   ESP32File *p = (ESP32File*)pFile;
   int rc;                         /* Return code from fstat() call */
   struct stat sStat;              /* Output of fstat() call */
@@ -305,7 +317,7 @@ static int ESP32FileSize(sqlite3_file *pFile, sqlite_int64 *pSize){
 	if (fstat(fno, &st))
 		return SQLITE_IOERR_FSTAT;
   *pSize = st.st_size;
-  //Serial.println("fn:FileSize:Success");
+  Dbg("fn:FileSize:Success");
   return SQLITE_OK;
 }
 
@@ -367,7 +379,7 @@ static int ESP32Access(
 ){
   int rc;                         /* access() return code */
   int eAccess = F_OK;             /* Second argument to access() */
-      //Serial.println("fn: Access");
+      Dbg("fn: Access");
 
   assert( flags==SQLITE_ACCESS_EXISTS       /* access(zPath, F_OK) */
        || flags==SQLITE_ACCESS_READ         /* access(zPath, R_OK) */
@@ -379,7 +391,7 @@ static int ESP32Access(
 
   rc = access(zPath, eAccess);
   *pResOut = (rc==0);
-  //Serial.println("fn:Access:Success");
+  Dbg("fn:Access:Success");
   return SQLITE_OK;
 }
 
@@ -413,11 +425,13 @@ static int ESP32Open(
   int oflags = 0;                 /* flags to pass to open() call */
   char *aBuf = 0;
 	char mode[5];
-      //Serial.println("fn: Open");
+      Dbg("fn: Open");
 
 	strcpy(mode, "r");
   if( zName==0 ){
-    return SQLITE_IOERR;
+    zName = "/sd/temp";
+    remove(zName); 
+    //return SQLITE_IOERR;
   }
 
   if( flags&SQLITE_OPEN_MAIN_JOURNAL ){
@@ -432,13 +446,13 @@ static int ESP32Open(
     struct stat st;
     memset(&st, 0, sizeof(struct stat));
     int rc = stat( zName, &st );
-    //Serial.println(zName);
+    Dbg("%s", zName);
 		if (rc == -1) {
       strcpy(mode, "w+");
       //int fd = open(zName, (O_CREAT | O_RDWR | O_EXCL), S_IRUSR | S_IWUSR);
       //close(fd);
       //oflags |= (O_CREAT | O_RDWR);
-      //Serial.println("Create mode");
+      Dbg("Create mode");
     } else
       strcpy(mode, "r+");
 	}
@@ -450,7 +464,7 @@ static int ESP32Open(
   if( p->fp<=0){
     if (aBuf)
       sqlite3_free(aBuf);
-    //Serial.println("Can't open");
+    Dbg("Can't open");
     return SQLITE_CANTOPEN;
   }
   p->aBuffer = aBuf;
@@ -459,7 +473,7 @@ static int ESP32Open(
     *pOutFlags = flags;
   }
   p->base.pMethods = &ESP32io;
-  //Serial.println("fn:Open:Success");
+  Dbg("fn:Open:Success");
   return SQLITE_OK;
 }
 
@@ -471,7 +485,7 @@ static int ESP32Open(
 static int ESP32Delete(sqlite3_vfs *pVfs, const char *zPath, int dirSync){
   int rc;                         /* Return code */
 
-      //Serial.println("fn: Delete");
+      Dbg("fn: Delete");
 
   rc = unlink(zPath);
   if( rc!=0 && errno==ENOENT ) return SQLITE_OK;
@@ -498,7 +512,7 @@ static int ESP32Delete(sqlite3_vfs *pVfs, const char *zPath, int dirSync){
     }
   }
   //if (rc == 0)
-    //Serial.println("fn:Delete:Success");
+    Dbg("fn:Delete:Success");
   return (rc==0 ? SQLITE_OK : SQLITE_IOERR_DELETE);
 }
 
@@ -531,7 +545,7 @@ static int ESP32FullPathname(
 
   //sqlite3_snprintf(nPathOut, zPathOut, "%s/%s", zDir, zPath);
   zPathOut[nPathOut-1] = '\0';
-  //Serial.println("fn:Fullpathname:Success");
+  Dbg("fn:Fullpathname:Success");
 
   return SQLITE_OK;
 }
